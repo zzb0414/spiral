@@ -77,13 +77,8 @@ class MS_UNet(nn.Module):
         # Global Residual projection (3 -> 2)
         self.global_res = nn.Conv2d(3, 2, kernel_size=1)
 
-        for m in [self.enc3, self.enc4, self.enc5, self.dec4, self.dec3, self.final, self.global_res]:
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-
-        for m in [self.enc3, self.enc4, self.enc5, self.dec4, self.dec3, self.final, self.global_res]:
+        # Initialize Conv2d weights for all submodules in this network
+        for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
                 if m.bias is not None:

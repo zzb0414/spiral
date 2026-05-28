@@ -181,8 +181,8 @@ def run_pipeline(file_name, prot_name, npy_name, b0map_name, fmax_MFI, L, B, P):
     # Final display.
     plt.figure()
     fig, axes = plt.subplots(2, 2, figsize=(15, 15))
-    axes[0][0].imshow(np.transpose(b0map[:, :, ns]), cmap='brw', vmin=-b0max, vmax=b0max)
-    axes[0][1].imshow(np.transpose(cleaned_map[:, :, ns]), cmap='brw', vmin=-b0max, vmax=b0max)
+    axes[0][0].imshow(np.transpose(b0map[:, :, ns]), cmap='bwr', vmin=-b0max, vmax=b0max)
+    axes[0][1].imshow(np.transpose(cleaned_map[:, :, ns]), cmap='bwr', vmin=-b0max, vmax=b0max)
     axes[1][0].imshow(np.transpose(np.abs(img_MFI[:, :, ns, Nf//2])), cmap='grey')
     axes[1][1].imshow(np.transpose(np.abs(img_final[:, :, ns])), cmap='grey')
 
