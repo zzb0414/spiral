@@ -33,10 +33,12 @@ class spi_obj:
     #                my_opt: The target spiral option object.
     def set_opt(self, my_opt):
         # Load spiral options to global parameters
-        global Gmax, Smax, grad_raster_time, FOV, Nx, Ns, N_acc_in, N_acc_out, dwell, BW, NADC, mode
+        global Gmax, Smax, grad_raster_time, calc_time_factor, FOV, Nx, Ns, N_acc_in, N_acc_out, dwell, BW, NADC, mode
         Gmax = my_opt.Gmax # [G/cm]
         Smax = my_opt.Smax * 100 # [G/cm/s]
         grad_raster_time = my_opt.grad_raster_time / 1e6 # [sec]
+        calc_time_factor = my_opt.calc_time_factor
+        grad_raster_time = float(grad_raster_time / calc_time_factor)
         FOV = 1e3 * my_opt.FOV # [mm]
         Nx = my_opt.Nx # Number of Nx voxels
         Ns = my_opt.Ns # Number of spiral arms
@@ -90,7 +92,7 @@ class spi_obj:
         Gx0, Gy0 = self.make_vds()
         Gx0 = np.insert(Gx0, 0, 0)
         Gy0 = np.insert(Gy0, 0, 0)
-        grad_time = grad_raster_time * np.arange(0, len(Gx0))
+        grad_time = grad_raster_time * np.arange(0, len(Gx0)) * calc_time_factor
         # NADC = np.floor(grad_raster_time * len(Gx0) / dwell)
         global dwell_time
         dwell_time = dwell * (np.arange(-10, NADC)) + (0.5 + self.manual_delay) * dwell # Manually adjust grad delay here.
@@ -163,8 +165,10 @@ class spi_obj:
 
         # print(cnt)
         
-        kx = np.multiply(radius[3::8], np.cos(theta[3::8]))
-        ky = np.multiply(radius[3::8], np.sin(theta[3::8]))
+        total_factor = 8 * calc_time_factor
+        start_idx = int(total_factor / 2 - 1)
+        kx = np.multiply(radius[start_idx::total_factor], np.cos(theta[start_idx::total_factor]))
+        ky = np.multiply(radius[start_idx::total_factor], np.sin(theta[start_idx::total_factor]))
         kx_fwd = kx
         ky_fwd = ky
 
@@ -173,7 +177,7 @@ class spi_obj:
         kx_fwd = np.insert(kx_fwd, 0, 0)
         ky_fwd = np.insert(ky_fwd, 0, 0)
 
-        for ii in range(math.floor((cnt + 5) / 8)):
+        for ii in range(math.floor((cnt + total_factor - start_idx) / total_factor)):
             kx_step = kx[ii] - kx_fwd[ii]
             ky_step = ky[ii] - ky_fwd[ii]
             Gx = np.append(Gx, float(kx_step * 10 / Gamma / grad_raster_time)) # [mT/m]

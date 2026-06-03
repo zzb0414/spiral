@@ -10,6 +10,7 @@ class spi_opt:
         self.Gmax = 10 # [G/cm]
         self.Smax = 15000 # [G/cm/s]
         self.grad_raster_time = 10 # [us]
+        self.calc_time_factor = 1 # Further shortening of durations
         self.FOV = 0.2 # [m]
         self.Nx = 128 # Number of Nx voxels
         self.Ns = 24 # Number of spiral arms

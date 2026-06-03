@@ -31,6 +31,8 @@ def run_pipeline(file_name, prot_name, npy_name, b0map_name, fmax_MFI, L, B, P):
     spi_param['Gmax'] = float(prot_tree.find('.//SpiralGMax_gs_cm/Value').text) # [G/cm]
     spi_param['Smax'] = float(prot_tree.find('.//SpiralSMax_T_per_m_s/Value').text) # [mT/m/ms]
     spi_param['grad_raster_time'] = 10 # [us]
+    # spi_param['calc_time_factor'] = float(prot_tree.find('.//CalcTimeFactor/Value').text) if prot_tree.find('.//CalcTimeFactor/Value').text else 1
+    spi_param['calc_time_factor'] = 1
     spi_param['FOV'] = float(prot_tree.find('.//FOVro/Value').text) * 1e-3 # [m]
     spi_param['Nx'] = int(prot_tree.find('.//MatrixRO/Value').text) # Number of Nx voxels
     spi_param['Ns'] = int(prot_tree.find('.//SpiralShotNum/Value').text) # Number of spiral arms
