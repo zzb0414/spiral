@@ -113,23 +113,24 @@ class ResidualCNN_5layers_withB0(nn.Module):
         self.conv5 = nn.Conv2d(n[3], 2, kernel_size=f[4], padding=f[4]//2)
 
         self.residual_layer = nn.Conv2d(3, 2, kernel_size=1)
+        # self.skip_layer = nn.Conv2d(n[2], 2, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, nonlinearity='leaky_relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         identity = self.residual_layer(x)
-        out = F.relu(self.conv1(x))
-        out = F.relu(self.conv2(out))
-        out = F.relu(self.conv3(out))
-        out = F.relu(self.conv4(out))
-        out = self.conv5(out) # No ReLU here
-        out += identity
+        out1 = F.leaky_relu(self.conv1(x), negative_slope=0.01)
+        out2 = F.leaky_relu(self.conv2(out1), negative_slope=0.01)
+        out3 = F.leaky_relu(self.conv3(out2), negative_slope=0.01) # + out1
+        out4 = F.leaky_relu(self.conv4(out3), negative_slope=0.01)
+        out5 = self.conv5(out4) # + self.skip_layer(out3) # No ReLU here
+        out5 += identity
         
-        return out
+        return out5
 
 
 """
@@ -216,7 +217,10 @@ class ResidualCNN_MSResNet_withB0(nn.Module):
 """
 The train model function.
 """
-def train_model(model, train_loader, optimizer, scheduler, device, criterion_l1, weighted_l1_loss, criterion_grad, lambda_grad=0.1, epochs=10):
+def train_model(model, train_loader, optimizer, scheduler, device, criterion_l1, weighted_l1_loss, criterion_grad, log_dir, lambda_grad=0.1, epochs=10):
+    from torch.utils.tensorboard import SummaryWriter
+    writer = SummaryWriter(log_dir=log_dir)
+
     model.train()
     
     for epoch in range(epochs):
@@ -224,7 +228,7 @@ def train_model(model, train_loader, optimizer, scheduler, device, criterion_l1,
         running_l1 = 0.0
         running_grad = 0.0
         
-        for inputs, targets in train_loader:
+        for batch_indx, (inputs, targets) in enumerate(train_loader):
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             
@@ -239,6 +243,10 @@ def train_model(model, train_loader, optimizer, scheduler, device, criterion_l1,
             loss = batch_l1_weighted + lambda_grad * batch_grad
             
             loss.backward()
+            # Real-time logging of model health metrics to TensorBoard.
+            if batch_indx % 50 == 0: # Log every 50 batches
+                global_step = epoch * len(train_loader) + batch_indx
+                log_model_health(model, writer, global_step)
             optimizer.step()
             
             # Accumulate values
@@ -278,3 +286,20 @@ def train_model(model, train_loader, optimizer, scheduler, device, criterion_l1,
             print(f"--- New Best Average L1 found: {best_l1:.6f} at Epoch {epoch} ---")
 
     print("Training Complete")
+
+
+"""
+log model health function for TensorBoard visualization.
+"""
+def log_model_health(model, writer, step):
+    for name, param in model.named_parameters():
+        if param.requires_grad and param.grad is not None:
+            # Log weight and bias values as histograms
+            writer.add_histogram(f"Parameters/{name}", param.data, step)
+            
+            # Log gradient magnitudes as histograms (Crucial for spotting vanishing grads)
+            writer.add_histogram(f"Gradients/{name}", param.grad, step)
+            
+            # Log Scalar Sparsity: percentage of elements near zero
+            sparsity = (param.data.abs() < 1e-4).float().mean().item()
+            writer.add_histogram(f"Sparsity/{name}", sparsity, step)
