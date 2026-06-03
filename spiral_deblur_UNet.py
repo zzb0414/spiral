@@ -56,8 +56,9 @@ class MS_block(nn.Module):
                                 n[0]-to-n[1] MS_block
 """
 class MS_UNet(nn.Module):
-    def __init__(self, f, n):
+    def __init__(self, f, n, skip='cat'):
         super(MS_UNet, self).__init__()
+        self.skip = skip
         
         # Encoder Path
         self.enc1 = MS_block(3, n[0], f)    # Input (R, I, B0) -> n[0]
@@ -69,7 +70,16 @@ class MS_UNet(nn.Module):
         self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         
         # Input to dec1 is sum of n[0] and n[1] -> Output n[0] due to symmetry
-        self.dec1 = MS_block(n[0]+n[1], n[0], f) 
+        if self.skip == 'cat':
+            self.dec1 = MS_block(n[0]+n[1], n[0], f)
+        elif self.skip == 'add' and n[0] == n[1]:
+            self.dec1 = MS_block(n[0], n[0], f)
+        else:
+            if self.skip == 'add':
+                print("Warning: For 'add' skip connection, n[0] and n[1] must be equal. Defaulting to 'cat'.")
+                self.skip = 'cat'
+            else:
+                raise ValueError("Invalid skip connection type. Choose 'cat' or 'add'.")
         
         # Final projection to 2 channels (Real/Imag)
         self.final = nn.Conv2d(n[0], 2, kernel_size=1)
@@ -86,7 +96,8 @@ class MS_UNet(nn.Module):
 
     def forward(self, x):
         # 1. Global shortcut
-        global_identity = self.global_res(x)
+        # global_identity = self.global_res(x)
+        global_identity = x[:, :2, :, :] # Assuming the input channels are ordered as (R, I, B0), we take only R and I for the global residual.
         
         # 2. Encoder
         s1 = self.enc1(x)       # [B, 3, H, W] -> [B, n[0], H, W]
@@ -96,7 +107,10 @@ class MS_UNet(nn.Module):
         
         # 3. Decoder
         up1 = self.up(b)        # [B, n[1], H, W]
-        cat1 = torch.cat([up1, s1], dim=1) # [B, n[0]+n[1], H, W]
+        if self.skip == 'cat':
+            cat1 = torch.cat([up1, s1], dim=1) # [B, n[0]+n[1], H, W]
+        else: # 'add'
+            cat1 = up1 + s1 # [B, n[0], H, W]
         d1 = self.dec1(cat1)    # [B, n[0], H, W]
         
         # 4. Final Addition
@@ -118,15 +132,20 @@ class MS_UNet_4stage(nn.Module):
         self.enc1 = MS_block(3, n[0], f)    # Input (R, I, B0) -> n[0], stage 0
         self.enc2 = MS_block(n[0], n[1], f) # n[0] -> n[1], stage 1
         self.enc3 = nn.Conv2d(in_channels=n[1], out_channels=n[2], kernel_size=3, padding=1) # n[1] -> n[2], stage 2
+        self.enc3_res = nn.Conv2d(n[1], n[2], kernel_size=1) # Residual for stage 2
         self.enc4 = nn.Conv2d(in_channels=n[2], out_channels=n[3], kernel_size=3, padding=1) # n[2] -> n[3], stage 3
+        self.enc4_res = nn.Conv2d(n[2], n[3], kernel_size=1) # Residual for stage 3
         self.enc5 = nn.Conv2d(in_channels=n[3], out_channels=n[4], kernel_size=3, padding=1) # n[3] -> n[4], stage 4 (bottleneck)
+        self.enc5_res = nn.Conv2d(n[3], n[4], kernel_size=1) # Residual for stage 4
         
         # Decoder Path
         self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         
         # Input to decoders is sum of corresponding encoder output and upsampled decoder output from previous stage.
         self.dec4 = nn.Conv2d(in_channels=n[4]+n[3], out_channels=n[3], kernel_size=3, padding=1) # n[4]+n[3] -> n[3], stage 4
+        self.dec4_res = nn.Conv2d(n[4]+n[3], n[3], kernel_size=1) # Residual for stage 4
         self.dec3 = nn.Conv2d(in_channels=n[3]+n[2], out_channels=n[2], kernel_size=3, padding=1) # n[3]+n[2] -> n[2], stage 3
+        self.dec3_res = nn.Conv2d(n[3]+n[2], n[2], kernel_size=1) # Residual for stage 3
         self.dec2 = MS_block(n[2]+n[1], n[1], f) # n[2]+n[1] -> n[1], stage 2
         self.dec1 = MS_block(n[0]+n[1], n[0], f) 
         
@@ -136,42 +155,49 @@ class MS_UNet_4stage(nn.Module):
         # Global Residual projection (3 -> 2)
         self.global_res = nn.Conv2d(3, 2, kernel_size=1)
 
-        for m in [self.enc3, self.enc4, self.enc5, self.dec4, self.dec3, self.final, self.global_res]:
+        for m in [self.enc3, self.enc3_res, self.enc4, self.enc4_res, self.enc5, self.enc5_res, 
+          self.dec4, self.dec4_res, self.dec3, self.dec3_res, self.final, self.global_res]:
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, nonlinearity='leaky_relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
 
     def forward(self, x):
         # 1. Global shortcut
-        global_identity = self.global_res(x)
+        # global_identity = self.global_res(x)
+        global_identity = x[:, :2, :, :] # Assuming the input channels are ordered as (R, I, B0), we take only R and I for the global residual.
         
         # 2. Encoder
         s1 = self.enc1(x)       # [B, 3, H, W] -> [B, n[0], H, W]
         p1 = self.pool(s1)      # [B, n[0], H, W] -> [B, n[0], H/2, W/2]
         s2 = self.enc2(p1)      # [B, n[0], H/2, W/2] -> [B, n[1], H/2, W/2]
         p2 = self.pool(s2)      # [B, n[1], H/2, W/2] -> [B, n[1], H/4, W/4]
-        s3 = F.relu(self.enc3(p2))      # [B, n[1], H/4, W/4] -> [B, n[2], H/4, W/4]
+        s3_conv = F.leaky_relu(self.enc3(p2))      # [B, n[1], H/4, W/4] -> [B, n[2], H/4, W/4]
+        s3 = s3_conv + self.enc3_res(p2) # Residual connection for stage 2
         p3 = self.pool(s3)      # [B, n[2], H/4, W/4] -> [B, n[2], H/8, W/8]
-        s4 = F.relu(self.enc4(p3))      # [B, n[2], H/8, W/8] -> [B, n[3], H/8, W/8]
+        s4_conv = F.leaky_relu(self.enc4(p3))      # [B, n[2], H/8, W/8] -> [B, n[3], H/8, W/8]
+        s4 = s4_conv + self.enc4_res(p3) # Residual connection for stage 3
         p4 = self.pool(s4)      # [B, n[3], H/8, W/8] -> [B, n[3], H/16, W/16] 
         
-        b = F.relu(self.enc5(p4))       # [B, n[3], H/16, W/16] -> [B, n[4], H/16, W/16]
+        b_conv = F.leaky_relu(self.enc5(p4))       # [B, n[3], H/16, W/16] -> [B, n[4], H/16, W/16]
+        b = b_conv + self.enc5_res(p4) # Residual connection for stage 4
         
         # 3. Decoder
-        up4 = self.up(b)        # [B, n[4], H/16, W/16]
-        cat4 = torch.cat([up4, s4], dim=1) # [B, n[3]+n[4], H/16, W/16]
-        d4 = F.relu(self.dec4(cat4))    # [B, n[3], H/16, W/16]
-        up3 = self.up(d4)       # [B, n[3], H/8, W/8]
-        cat3 = torch.cat([up3, s3], dim=1) # [B, n[2]+n[3], H/8, W/8]
-        d3 = F.relu(self.dec3(cat3))    # [B, n[2], H/8, W/8]
-        up2 = self.up(d3)       # [B, n[2], H/4, W/4]
-        cat2 = torch.cat([up2, s2], dim=1) # [B, n[1]+n[2], H/4, W/4]
-        d2 = self.dec2(cat2)    # [B, n[1], H/4, W/4]
-        up1 = self.up(d2)       # [B, n[1], H/2, W/2]
-        cat1 = torch.cat([up1, s1], dim=1) # [B, n[0]+n[1], H/2, W/2]
-        d1 = self.dec1(cat1)    # [B, n[0], H/2, W/2]
+        up4 = self.up(b)        # [B, n[4], H/8, W/8]
+        cat4 = torch.cat([up4, s4], dim=1) # [B, n[3]+n[4], H/8, W/8]
+        d4_conv = F.leaky_relu(self.dec4(cat4))    # [B, n[3], H/8, W/8]
+        d4 = d4_conv + self.dec4_res(cat4) # Residual connection for stage 4
+        up3 = self.up(d4)       # [B, n[3], H/4, W/4]
+        cat3 = torch.cat([up3, s3], dim=1) # [B, n[2]+n[3], H/4, W/4]
+        d3_conv = F.leaky_relu(self.dec3(cat3))    # [B, n[2], H/4, W/4]
+        d3 = d3_conv + self.dec3_res(cat3) # Residual connection for stage 3
+        up2 = self.up(d3)       # [B, n[2], H/2, W/2]
+        cat2 = torch.cat([up2, s2], dim=1) # [B, n[1]+n[2], H/2, W/2]
+        d2 = self.dec2(cat2)    # [B, n[1], H/2, W/2]
+        up1 = self.up(d2)       # [B, n[1], H, W]
+        cat1 = torch.cat([up1, s1], dim=1) # [B, n[0]+n[1], H, W]
+        d1 = self.dec1(cat1)    # [B, n[0], H, W]
         
         # 4. Final Addition
         # The U-Net generates the 'deblurring correction' 
