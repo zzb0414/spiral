@@ -165,7 +165,7 @@ class spi_obj:
 
         # print(cnt)
         
-        total_factor = 8 * calc_time_factor
+        total_factor = int(8 * calc_time_factor)
         start_idx = int(total_factor / 2 - 1)
         kx = np.multiply(radius[start_idx::total_factor], np.cos(theta[start_idx::total_factor]))
         ky = np.multiply(radius[start_idx::total_factor], np.sin(theta[start_idx::total_factor]))
