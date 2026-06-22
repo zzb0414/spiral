@@ -13,7 +13,7 @@ from xml.etree import ElementTree as et
 import warnings
 warnings.filterwarnings('ignore')
     
-def run_pipeline(file_name, prot_name, npy_name, b0map_name, fmax_MFI, L, B, P):
+def run_pipeline(file_name, prot_name, npy_name, b0map_name, grad_resp_folder, fmax_MFI, L, B, P):
     # Initialize a default spi_recon object. It has default spi_opt and corresponding spi_obj.
     spi_recon1 = spi_recon()
     my_opt = spi_recon1.get_opt()
@@ -65,8 +65,8 @@ def run_pipeline(file_name, prot_name, npy_name, b0map_name, fmax_MFI, L, B, P):
     spi_recon2 = cp.deepcopy(spi_recon1)
     spi_recon2.CSM = None # Re-do CSM when GIRF is applied.
     # %run load_Hfun_Jupiter.py
-    freq_axis_name = 'C:/Users/zhibo.zhu/OneDrive - UIH Group/Documents/Jupyter/spiral/freq_axis.npy'
-    Hfun_name = 'C:/Users/zhibo.zhu/OneDrive - UIH Group/Documents/Jupyter/spiral/Hfun.npy'
+    freq_axis_name = grad_resp_folder + '\\freq_axis.npy'
+    Hfun_name = grad_resp_folder + '\\Hfun.npy'
     spi_recon2.get_obj().apply_GIRF(freq_axis_name, Hfun_name)
     spi_recon2.get_obj().calc_dcf("analytical2")
     img_girf = spi_recon2.run(ksp, freq=0)
