@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 #import math
 
-folder_name = "C:/Users/zhibo.zhu/OneDrive - UIH Group/Documents/Jupyter/spiral/Grad_Response_Spi"
+folder_name = "C:/Users/zhibo.zhu/OneDrive - UIH Group/Documents/Jupyter/spiral/Grad_Response_Spi/Jupiter"
+grad_resp_name = "C:/Users/zhibo.zhu/OneDrive - UIH Group/Documents/Jupyter/spiral/Hfun/Jupiter"
 
 file_path = folder_name + "\\Fre_Axis.dat"
 freq_axis = np.fromfile(file_path, dtype='float32')
@@ -35,5 +36,5 @@ Hz_grad = Hz_grad[0:n] + Hz_grad[n:] * 1j
 
 Hfun = np.vstack((Hx_B0, Hy_B0, Hz_B0, Hx_grad, Hy_grad, Hz_grad))
 print("Saving data ...")
-np.save("freq_axis.npy", freq_axis.astype('float32'))
-np.save("Hfun.npy", Hfun.astype('complex64'))
+np.save(grad_resp_name + "\\freq_axis.npy", freq_axis.astype('float32'))
+np.save(grad_resp_name + "\\Hfun.npy", Hfun.astype('complex64'))
