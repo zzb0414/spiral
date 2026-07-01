@@ -1,0 +1,5 @@
+__pycache__
+.ipynb_checkpoints
+Py_RawReadRecon_v1
+*.pyc
+dir_spiral.ipynb
