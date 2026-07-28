@@ -104,7 +104,7 @@ def NUFFT_adjoint(ksp, CSM, crdsx, crdsy, B0_phasors, temporal_coeff, DCF):
 
 
 # NUFFT_forward_torch(): GPU based NUFFT forward using PyTorch.
-def NUFFT_forward_torch(img, csm_torch, ktraj, weights_torch, DCF, B0_map, t_l, batch_size=8):
+def NUFFT_forward_torch(img, csm_torch, ktraj, weights_torch, DCF, B0_map, t_l, omega, batch_size=8):
     """
     Forward Operator (A): Image Space -> K-space
     img: (Nx, Ny, Ns), complex 3D images, PyTorch tensor.
@@ -114,6 +114,7 @@ def NUFFT_forward_torch(img, csm_torch, ktraj, weights_torch, DCF, B0_map, t_l, 
     DCF: (Npe*NADC), density compensation function, PyTorch tensor.
     B0_map: (Nx, Ny, Ns), 3D static off-resonance maps in Hz, PyTorch tensor.
     t_l: (L, ), central time points for each readout segments, PyTorch tensor.
+    omega: (), sampling mask, PyTorch tensor.
     """
     Nx, Ny, Ns = img.shape
     Nc = csm_torch.shape[1]
@@ -166,6 +167,9 @@ def NUFFT_forward_torch(img, csm_torch, ktraj, weights_torch, DCF, B0_map, t_l, 
             
         del img_l_spatial, img_l_hybrid
         torch.cuda.empty_cache()
+
+        if omega is not None:
+            ksp_full = ksp_full.masked_fill(~omega, 0)
         
     return ksp_full
 

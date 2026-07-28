@@ -108,7 +108,7 @@ def run_pipeline(file_name, prot_name, npy_name, b0map_name, grad_resp_folder, f
     # spi_recon2 tests iterative reconstruction.
     TE = float(prot_tree.find('.//TE/Value').text) / 1e6
     print(f"TE: {TE} sec.")
-    img_IR = spi_recon2.run_iterative_recon(ksp, cleaned_map, TE=TE, iters=5, L=L, B=B, fmax=fmax_MFI)
+    img_IR = spi_recon2.run_iterative_recon(ksp, cleaned_map, TE=TE, acc=False, iters=5, L=L, B=B, fmax=fmax_MFI)
 
     plt.figure()
     plt.imshow(np.transpose(np.abs(img_IR[:, :, ns])), cmap='grey')

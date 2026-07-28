@@ -88,12 +88,12 @@ class spi_recon:
         # Inati.
         if self.CSM is None:
             print("Caulating CSM ...")
-            csm, img_cc = calculate_csm_inati_iter(np.permute_dims(img_c, (3, 2, 1, 0)), smoothing=5, niter=5, thresh=1e-3, verbose=False)
+            csm, img_cc = calculate_csm_inati_iter(np.transpose(img_c, (3, 2, 1, 0)), smoothing=5, niter=5, thresh=1e-3, verbose=False)
             # csm_energy = np.sqrt(np.sum(np.abs(csm)**2, axis=0, keepdims=True))
             # csm = csm / (csm_energy + 1e-12)
-            self.CSM = np.permute_dims(csm, (3, 2, 1, 0))
+            self.CSM = np.transpose(csm, (3, 2, 1, 0))
             print("CSM calculation done.")
-            img = np.permute_dims(img_cc, (2, 1, 0))
+            img = np.transpose(img_cc, (2, 1, 0))
         else:
             print("Using existing CSM.")
             img = (img_c * np.conj(self.CSM)).sum(-1)
@@ -104,7 +104,7 @@ class spi_recon:
         print(f"3D stack-of-spiral recon used {toc - tic:0.4f} seconds") 
         return img
 
-    def run_iterative_recon(self, ksp, B0_map, TE, iters=5, L=15, B=8, fmax=1000):
+    def run_iterative_recon(self, ksp, B0_map, TE, acc=False, iters=5, L=15, B=8, fmax=1000):
         # Estimate temporal coefficients for time segmented phase modulations.
         dwell_time = self.spi_obj.dwell_time
         dwell_time += TE - dwell_time[0]
@@ -138,6 +138,10 @@ class spi_recon:
         csm_energy = torch.sqrt(torch.sum(torch.abs(csm_torch)**2, dim=1, keepdim=True))
         csm_torch = csm_torch / (csm_energy + 1e-12)
         ksp_torch = torch.tensor(np.squeeze(ksp.reshape(ksp.shape[0], -1, ksp.shape[3], 1))).permute(2, 0, 1)
+        if acc:
+            omega = (torch.abs(ksp_torch) != 0)
+        else:
+            omega = None
 
         # Perform CG SENSE.
         Nx = self.spi_opt.Nx
@@ -148,11 +152,12 @@ class spi_recon:
         ktraj = ktraj.to('cuda')
         r = NUFFT_adjoint_torch(ksp_torch, csm_torch, ktraj, weights_torch, torch.square(dcf_torch), b0_torch, tau_L, batch_size=8)
         p = copy.deepcopy(r)
+        r_norm = torch.norm(r)
         
         for i in range(iters):
-            print(f"Iter {i}, loss: {torch.norm(r)}")
+            print(f"Iter {i}, relative residual norm: {torch.norm(r) / r_norm}")
             # Apply A^H A
-            q = NUFFT_adjoint_torch(NUFFT_forward_torch(p, csm_torch, ktraj, weights_torch, torch.ones_like(dcf_torch), b0_torch, tau_L, batch_size=8), csm_torch, ktraj, weights_torch, torch.square(dcf_torch), b0_torch, tau_L, batch_size=8)
+            q = NUFFT_adjoint_torch(NUFFT_forward_torch(p, csm_torch, ktraj, weights_torch, torch.ones_like(dcf_torch), b0_torch, tau_L, omega, batch_size=8), csm_torch, ktraj, weights_torch, torch.square(dcf_torch), b0_torch, tau_L, batch_size=8)
             
             # Standard CG Update
             alpha = torch.sum(r*r) / torch.sum(p*q)
