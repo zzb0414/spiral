@@ -23,10 +23,12 @@ class spi_recon:
         self.CSM = None
         self.fname = ""
 
-    def run(self, ksp, freq):
+    def run(self, ksp, mtx, interp_factor, freq):
         # Load .npy after self.read_raw(self, raw_name) has been performed.
         # ksp = np.load(self.fname) # Nc-Nro-Npe-Ns-1
         ksp_finufft = copy.deepcopy(ksp) # Make a deepcopy.
+
+        Nx, Ny, Ns = mtx
 
         if freq != 0:
             print(f"MFI recon using frequency offset = {freq} Hz.")
@@ -46,7 +48,7 @@ class spi_recon:
                 raise ValueError("2D cones not yet supported.")
             case "0b10":
                 print("IFFT applied along slice dimension. k-space is now in (coil-kro-kpe-slice-1).")
-                ksp_finufft = np.fft.fftshift(np.fft.ifft(np.fft.ifftshift(ksp_finufft, axes=3), axis=3), axes=3)
+                ksp_finufft = np.fft.fftshift(np.fft.ifft(np.fft.ifftshift(ksp_finufft, axes=3), n=Ns, axis=3), axes=3)
             case "0b11":
                 raise ValueError("3D cones not yet supported.")
 
@@ -58,7 +60,9 @@ class spi_recon:
         dcf = np.transpose(self.get_obj().dcf) # (NADC, Npe)
         dcf = np.squeeze(dcf)
         
-        img_shape = [self.spi_opt.Nx, self.spi_opt.Nx, ksp_finufft.shape[3]]
+        img_shape = [self.spi_opt.Nx * interp_factor, self.spi_opt.Nx * interp_factor, ksp_finufft.shape[3]]
+        crdsx /= interp_factor
+        crdsy /= interp_factor
         
         import finufft
         import time
@@ -104,7 +108,7 @@ class spi_recon:
         print(f"3D stack-of-spiral recon used {toc - tic:0.4f} seconds") 
         return img
 
-    def run_iterative_recon(self, ksp, B0_map, TE, acc=False, iters=5, L=15, B=8, fmax=1000):
+    def run_iterative_recon(self, ksp, B0_map, TE, interp_factor, acc=False, iters=5, L=15, B=8, fmax=1000):
         # Estimate temporal coefficients for time segmented phase modulations.
         dwell_time = self.spi_obj.dwell_time
         dwell_time += TE - dwell_time[0]
@@ -144,11 +148,12 @@ class spi_recon:
             omega = None
 
         # Perform CG SENSE.
-        Nx = self.spi_opt.Nx
+        Nx = self.spi_opt.Nx * interp_factor
         Ny = Nx
         Ns = ksp.shape[3]
         x = torch.zeros(Nx, Ny, Ns, dtype=torch.complex64)
-        
+
+        ktraj /= interp_factor
         ktraj = ktraj.to('cuda')
         r = NUFFT_adjoint_torch(ksp_torch, csm_torch, ktraj, weights_torch, torch.square(dcf_torch), b0_torch, tau_L, batch_size=8)
         p = copy.deepcopy(r)
