@@ -48,7 +48,11 @@ class spi_recon:
                 raise ValueError("2D cones not yet supported.")
             case "0b10":
                 print("IFFT applied along slice dimension. k-space is now in (coil-kro-kpe-slice-1).")
-                ksp_finufft = np.fft.fftshift(np.fft.ifft(np.fft.ifftshift(ksp_finufft, axes=3), n=Ns, axis=3), axes=3)
+                if Ns > ksp_finufft.shape[3]:
+                    pad_length = [(0, 0)] * ksp_finufft.ndim
+                    pad_length[3] = ((Ns - ksp_finufft.shape[3]) // 2, (Ns - ksp_finufft.shape[3]) // 2)
+                    ksp_finufft = np.pad(ksp_finufft, pad_length, mode='constant')
+                ksp_finufft = np.fft.fftshift(np.fft.ifft(np.fft.ifftshift(ksp_finufft, axes=3), axis=3), axes=3)
             case "0b11":
                 raise ValueError("3D cones not yet supported.")
 
